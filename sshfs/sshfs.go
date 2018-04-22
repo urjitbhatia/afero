@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/spf13/afero"
@@ -102,18 +101,52 @@ func (fs *Fs) MkdirAll(path string, perm os.FileMode) error {
 	return nil
 }
 
+// Open opens the named file for reading.
 func (fs *Fs) Open(name string) (afero.File, error) { return nil, nil }
+
+// OpenFile is the generalized open call; most users will use Open or Create instead.
+// It opens the named file with specified flag (O_RDONLY etc.)
+// and perm (before umask), if applicable.
+// If successful, methods on the returned File can be used for I/O.
+// If there is an error, it will be of type *PathError.
 func (fs *Fs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
 	return nil, nil
 }
-func (fs *Fs) Remove(name string) error              { return nil }
-func (fs *Fs) RemoveAll(path string) error           { return nil }
-func (fs *Fs) Rename(oldname, newname string) error  { return nil }
+
+// Remove removes the named file or directory. If there is an error, it will be of type *PathError.
+func (fs *Fs) Remove(name string) error { return nil }
+
+// RemoveAll removes path and any children it contains.
+// It removes everything it can but returns the first error it encounters.
+// If the path does not exist, RemoveAll returns nil (no error).
+func (fs *Fs) RemoveAll(path string) error { return nil }
+
+// Rename renames (moves) oldpath to newpath. If newpath already exists and is not a directory,
+// Rename replaces it. OS-specific restrictions may apply when
+// oldpath and newpath are in different directories.
+// If there is an error, it will be of type *LinkError.
+func (fs *Fs) Rename(oldname, newname string) error { return nil }
+
+// Stat returns the FileInfo structure describing file. If there is an error, it will be of type *PathError.
 func (fs *Fs) Stat(name string) (os.FileInfo, error) { return nil, nil }
-func (fs *Fs) Name() string                          { return fs.String() }
+
+// Name returns the name of the filesystem
+func (fs *Fs) Name() string { return fs.String() }
+
+// Chmod changes the mode of the named file to mode.
+// If the file is a symbolic link, it changes the mode of the link's target.
+// If there is an error, it will be of type *PathError.
+// See docs in file.go?s=10557:10601#L326
 func (fs *Fs) Chmod(name string, mode os.FileMode) error {
 	return nil
 }
+
+// Chtimes changes the access and modification times of the named
+// file, similar to the Unix utime() or utimes() functions.
+//
+// The underlying filesystem may truncate or round the values to a
+// less precise time unit.
+// If there is an error, it will be of type *PathError.
 func (fs *Fs) Chtimes(name string, atime time.Time, mtime time.Time) error { return nil }
 
 func connect(user, password, host string, port int) (*ssh.Client, error) {
@@ -127,7 +160,7 @@ func connect(user, password, host string, port int) (*ssh.Client, error) {
 	clientConfig = &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
-			SSHAgent(),
+			sshAgent(),
 		},
 		Timeout:         100 * time.Millisecond,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
@@ -143,28 +176,12 @@ func connect(user, password, host string, port int) (*ssh.Client, error) {
 	return sshClient, nil
 }
 
-func SSHAgent() ssh.AuthMethod {
-	if sshAgent, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK")); err == nil {
+// sshAgent creates an auth method using the ssh agent sock if available
+func sshAgent() ssh.AuthMethod {
+	sshAgent, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK"))
+	if err == nil {
 		return ssh.PublicKeysCallback(agent.NewClient(sshAgent).Signers)
-	} else {
-		log.Println("Failed to instantiate ssh from SSH_AUTH_SOCK", err)
 	}
+	log.Println("Failed to instantiate ssh from SSH_AUTH_SOCK", err)
 	return nil
-}
-
-// syscallMode returns the syscall-specific mode bits from Go's portable mode bits.
-// From: https://golang.org/src/os/file_posix.go
-func syscallMode(i os.FileMode) (o uint32) {
-	o |= uint32(i.Perm())
-	if i&os.ModeSetuid != 0 {
-		o |= syscall.S_ISUID
-	}
-	if i&os.ModeSetgid != 0 {
-		o |= syscall.S_ISGID
-	}
-	if i&os.ModeSticky != 0 {
-		o |= syscall.S_ISVTX
-	}
-	// No mapping for Go's ModeTemporary (plan9 only).
-	return
 }

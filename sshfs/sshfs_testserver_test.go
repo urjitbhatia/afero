@@ -27,18 +27,9 @@ func NewTestSSHServ() *testSSHServ {
 // Listen starts a test SSH server listens on given port.
 func (ts *testSSHServ) Listen(port int) {
 	config := &ssh.ServerConfig{
-		// Define a function to run when a client attempts a password login
-		// PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
-		// 	// Should use constant-time compare (or better, salt+hash) in a production setting.
-		// 	if c.User() == "foo" && string(pass) == "bar" {
-		// 		return nil, nil
-		// 	}
-		// 	return nil, fmt.Errorf("password rejected for %q", c.User())
-		// },
+		// This is a *TEST* ssh server without auth, implement a PasswordCallback etc if you want
+		// to copy this code for a production system
 		NoClientAuth: true,
-		// You may also explicitly allow anonymous client authentication, though anon bash
-		// sessions may not be a wise idea
-		// NoClientAuth: true,
 	}
 
 	// You can generate a keypair with 'ssh-keygen -t rsa'
