@@ -52,6 +52,7 @@ func (ts *testSSHServ) Listen(port int) {
 	// Accept all connections
 	log.Print("Listening on ", listener.Addr().String())
 	for {
+		log.Println("Waiting for an incoming connection...")
 		tcpConn, err := listener.Accept()
 		if err != nil {
 			log.Printf("Failed to accept incoming connection (%s)", err)
@@ -69,11 +70,11 @@ func (ts *testSSHServ) Listen(port int) {
 		// The incoming Request channel must be serviced.
 		go ssh.DiscardRequests(reqs)
 		// Accept all channels
-		for newChannel := range chans {
-			// Technically, this should be a go routine but we will only test one thing at a time
-			// so its ok
-			go ts.handleChannel(newChannel)
-		}
+		go func() {
+			for newChannel := range chans {
+				go ts.handleChannel(newChannel)
+			}
+		}()
 	}
 }
 

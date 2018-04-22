@@ -31,6 +31,7 @@ type session struct {
 
 // New provides an afero filesystem over ssh
 func New(host string, port int, username, password string, root string) (afero.Fs, error) {
+	// Todo : handle reconnecting broken connections...
 	conn, err := connect(username, password, host, port)
 	if err != nil {
 		return nil, err
@@ -92,20 +93,20 @@ func (fs *Fs) MkdirAll(path string, perm os.FileMode) error {
 	if sess.err != nil {
 		return sess.err
 	}
-	defer fs.sessions.Put(sess)
-
-	pathSoFar := fs.Root
+	defer func() {
+		sess.Close()
+		fs.sessions.Put(sess)
+	}()
+	parts := []string{}
 	for _, part := range strings.Split(path, "/") {
 		if part == "" {
 			// takes care of "//dir" or "/dir//dir1" etc
 			continue
 		}
-		pathSoFar = pathSoFar + "/" + part
-		if err := fs.Mkdir(pathSoFar, perm); err != nil {
-			return err
-		}
+		parts = append(parts, part)
 	}
-	return nil
+
+	return fs.Mkdir(strings.Join(parts, "/"), perm)
 }
 
 // Open opens the named file for reading.
