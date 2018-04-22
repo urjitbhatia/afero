@@ -30,8 +30,8 @@ type session struct {
 }
 
 // New provides an afero filesystem over ssh
-func New(host string, port int, root string) (afero.Fs, error) {
-	conn, err := connect("ubuntu", "", host, port)
+func New(host string, port int, username, password string, root string) (afero.Fs, error) {
+	conn, err := connect(username, password, host, port)
 	if err != nil {
 		return nil, err
 	}
@@ -70,11 +70,18 @@ func (fs *Fs) Mkdir(name string, perm os.FileMode) error {
 		sess.Close()
 		fs.sessions.Put(sess)
 	}()
+	// The reason to use `install` is to be able to create a dir
+	// and apply the right permissions atomically - if for some reason
+	// We could have called a mkdir followed by a chmod call but if we crash right
+	// after mkdir, we potentially leave an exposed directory on somebody's production
+	// server.
+
+	// TODO: check `install` is available on what platforms by default
 	cmd := fmt.Sprintf("install -d -m %o %s/%s", perm, fs.Root, name)
-	log.Println("Sending remote command: ", cmd)
+	log.Println("Sending remote command: ", cmd, len(cmd))
 	r, err := sess.CombinedOutput(cmd)
 	if err == nil {
-		log.Println("mkdir got: ", r)
+		log.Println("Error performing mkdir: ", r, err)
 	}
 	return nil
 }
