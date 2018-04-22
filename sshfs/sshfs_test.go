@@ -46,10 +46,28 @@ func TestMkdirAll(t *testing.T) {
 
 	err = fs.MkdirAll("/testdir/subdir/subsubdir", 0744)
 	if err != nil {
-		t.Error("Failed mkdir", err)
+		t.Error("Failed mkdirall", err)
 	}
 	cmd := <-sshCmdCaptor
 	expected := "install -d -m 744 /tmp/testdir/subdir/subsubdir"
+
+	if cmd != expected {
+		t.Errorf("Mkdir command mismatched\nExpected:\t%s\nGot:\t%s", expected, cmd)
+	}
+}
+func TestChmod(t *testing.T) {
+	go ensureTestServer(t)
+	fs, err := sshfs.New("localhost", testPort, "", "", "/tmp")
+	if err != nil {
+		t.Fatal("Failed to open a new ssh filesystem", err)
+	}
+
+	err = fs.Chmod("/testdir//foo", 0744)
+	if err != nil {
+		t.Error("Failed chmod", err)
+	}
+	cmd := <-sshCmdCaptor
+	expected := "chmod 744 /tmp/testdir/foo"
 
 	if cmd != expected {
 		t.Errorf("Mkdir command mismatched\nExpected:\t%s\nGot:\t%s", expected, cmd)

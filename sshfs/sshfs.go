@@ -146,6 +146,19 @@ func (fs *Fs) Name() string { return fs.String() }
 // If there is an error, it will be of type *PathError.
 // See docs in file.go?s=10557:10601#L326
 func (fs *Fs) Chmod(name string, mode os.FileMode) error {
+	sess := fs.sessions.Get().(*session)
+	if sess.err != nil {
+		return sess.err
+	}
+	defer func() {
+		sess.Close()
+		fs.sessions.Put(sess)
+	}()
+	cmd := fmt.Sprintf("chmod %o %s", mode, sanitizePath(fs.Root, name))
+	r, err := sess.CombinedOutput(cmd)
+	if err == nil {
+		log.Println("Error performing chmod: ", r, err)
+	}
 	return nil
 }
 
@@ -192,4 +205,17 @@ func sshAgent() ssh.AuthMethod {
 	}
 	log.Println("Failed to instantiate ssh from SSH_AUTH_SOCK", err)
 	return nil
+}
+
+func sanitizePath(root, path string) string {
+	parts := append([]string{}, root)
+	for _, part := range strings.Split(path, "/") {
+		if part == "" {
+			// takes care of "//dir" or "/dir//dir1" etc
+			continue
+		}
+		parts = append(parts, part)
+	}
+
+	return strings.Join(parts, "/")
 }
