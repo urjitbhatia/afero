@@ -14,6 +14,9 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
+// [[CC]YY]MMDDhhmm[.ss]
+var touchTimeFmt = "200601021504.05"
+
 // Fs is an afero filesystem over ssh
 type Fs struct {
 	Host     string
@@ -68,7 +71,6 @@ func (fs *Fs) Mkdir(name string, perm os.FileMode) error {
 		return sess.err
 	}
 	defer func() {
-		sess.Close()
 		fs.sessions.Put(sess)
 	}()
 	// The reason to use `install` is to be able to create a dir
@@ -94,7 +96,6 @@ func (fs *Fs) MkdirAll(path string, perm os.FileMode) error {
 		return sess.err
 	}
 	defer func() {
-		sess.Close()
 		fs.sessions.Put(sess)
 	}()
 	parts := []string{}
@@ -151,7 +152,6 @@ func (fs *Fs) Chmod(name string, mode os.FileMode) error {
 		return sess.err
 	}
 	defer func() {
-		sess.Close()
 		fs.sessions.Put(sess)
 	}()
 	cmd := fmt.Sprintf("chmod %o %s", mode, sanitizePath(fs.Root, name))
@@ -168,7 +168,40 @@ func (fs *Fs) Chmod(name string, mode os.FileMode) error {
 // The underlying filesystem may truncate or round the values to a
 // less precise time unit.
 // If there is an error, it will be of type *PathError.
-func (fs *Fs) Chtimes(name string, atime time.Time, mtime time.Time) error { return nil }
+func (fs *Fs) Chtimes(name string, atime time.Time, mtime time.Time) error {
+	// Atime
+	asess := fs.sessions.Get().(*session)
+	if asess.err != nil {
+		return asess.err
+	}
+	defer func() {
+		fs.sessions.Put(asess)
+	}()
+
+	cmd := fmt.Sprintf("touch -a -t %s %s", atime.Format(touchTimeFmt), sanitizePath(fs.Root, name))
+	log.Println("running command: ", cmd)
+	out, err := asess.CombinedOutput(cmd)
+	if err != nil {
+		log.Println("Error setting access time ", err, string(out))
+		return err
+	}
+	// MTime
+	msess := fs.sessions.Get().(*session)
+	if msess.err != nil {
+		return msess.err
+	}
+	defer func() {
+		fs.sessions.Put(msess)
+	}()
+
+	cmd = fmt.Sprintf("touch -m -t %s %s", atime.Format(touchTimeFmt), sanitizePath(fs.Root, name))
+	log.Println("Running mtime command ", cmd)
+	err = msess.Run(cmd)
+	if err != nil {
+		log.Println("Error setting mod time ", err)
+	}
+	return err
+}
 
 func connect(user, password, host string, port int) (*ssh.Client, error) {
 	var (

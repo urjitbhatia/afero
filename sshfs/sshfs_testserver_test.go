@@ -91,30 +91,29 @@ func (ts *testSSHServ) handleChannel(newChannel ssh.NewChannel) {
 		log.Printf("Could not accept channel (%s)", err)
 		return
 	}
-	defer channel.Close()
-
-	// Sessions have out-of-band requests such as "shell", "pty-req" and "env"
-	// We only handle "exec" requests for this test setup
-
 	// This should be a go routine to multiplex on channels but we don't need that
 	// for testing
-	for req := range requests {
-		log.Printf("Handling a request of Type: %s Payload: %s", req.Type, req.Payload)
-		switch req.Type {
-		case "exec":
-			// We only accept the default exec type requests for this test
-			go ts.recordCommand(req.Payload)
-			req.Reply(true, []byte("ok"))
-			channel.Close()
-			channel.CloseWrite()
-		default:
-			req.Reply(false, []byte("expected request type: exec"))
+	go func() {
+		defer channel.CloseWrite()
+		defer channel.Close()
+		for req := range requests {
+			log.Printf("Handling a request of Type: %s Payload: %s", req.Type, req.Payload)
+			switch req.Type {
+			case "exec":
+				// We only accept the default exec type requests for this test
+				go ts.recordCommand(req.Payload)
+				req.Reply(true, []byte("ok"))
+				channel.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+				return
+			default:
+				req.Reply(false, []byte("expected request type: exec"))
+			}
 		}
-	}
+	}()
 }
 
 // Capture the prev request we saw and post it on this channel - for testing
 func (ts *testSSHServ) recordCommand(cmd []byte) {
-	// Somehow the wire protocol is prefixing 4 empty bytes at the beginning of the payload :(
+	// The wire protocol is prefixing 4 empty bytes at the beginning of the payload :(
 	ts.cmdCaptor <- string(cmd[4:])
 }
