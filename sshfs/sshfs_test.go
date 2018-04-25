@@ -1,103 +1,168 @@
 package sshfs_test
 
 import (
-	"log"
+	"io/ioutil"
+	"os"
+	"path"
 	"testing"
 	"time"
 
+	"github.com/pkg/sftp"
+	"github.com/spf13/afero"
 	"github.com/spf13/afero/sshfs"
 )
 
 var testPort = 22000
-var testSrv *testSSHServ
-var sshCmdCaptor = make(chan string)
 
-func ensureTestServer(t *testing.T) {
-	if testSrv == nil {
-		testSrv = NewTestSSHServ(sshCmdCaptor)
-		log.Println("Running test server")
-		testSrv.Listen(testPort)
-	}
+func getTestFs(sftp *sftp.Client) afero.Fs {
+	return sshfs.NewWithClient("localhost", testPort, "", "", sftp)
 }
 
 func TestMkdir(t *testing.T) {
-	go ensureTestServer(t)
-	fs, err := sshfs.New("localhost", testPort, "", "", "/tmp")
-	if err != nil {
-		t.Fatal("Failed to open a new ssh filesystem", err)
-	}
+	sftp := testClientSvr(t)
+	defer sftp.Close()
+	fs := getTestFs(sftp)
 
-	err = fs.Mkdir("testdir", 0744)
+	dir, err := ioutil.TempDir("", "sftptest")
 	if err != nil {
-		t.Error("Failed mkdir", err)
+		t.Fatal(err)
 	}
-	cmd := <-sshCmdCaptor
-	expected := "install -d -m 744 /tmp/testdir"
-
-	if cmd != expected {
-		t.Errorf("Mkdir command mismatched\nExpected:\t%s\nGot:\t%s", expected, cmd)
+	sub := path.Join(dir, "mkdir1")
+	if err := fs.Mkdir(sub, 0744); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(sub); err != nil {
+		t.Fatal(err)
 	}
 }
 func TestMkdirAll(t *testing.T) {
-	go ensureTestServer(t)
-	fs, err := sshfs.New("localhost", testPort, "", "", "/tmp")
-	if err != nil {
-		t.Fatal("Failed to open a new ssh filesystem", err)
-	}
+	sftp := testClientSvr(t)
+	defer sftp.Close()
+	fs := getTestFs(sftp)
 
-	err = fs.MkdirAll("/testdir/subdir/subsubdir", 0744)
+	dir, err := ioutil.TempDir("", "sftptest")
 	if err != nil {
-		t.Error("Failed mkdirall", err)
+		t.Fatal(err)
 	}
-	cmd := <-sshCmdCaptor
-	expected := "install -d -m 744 /tmp/testdir/subdir/subsubdir"
-
-	if cmd != expected {
-		t.Errorf("Mkdir command mismatched\nExpected:\t%s\nGot:\t%s", expected, cmd)
+	sub := path.Join(dir, "mkdirall1", "mkdirall2", "mkdirall3")
+	if err := fs.MkdirAll(sub, 0744); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(sub); err != nil {
+		t.Fatal(err)
 	}
 }
+func TestCreate(t *testing.T) {
+	sftp := testClientSvr(t)
+	defer sftp.Close()
+	fs := getTestFs(sftp)
+
+	dir, err := ioutil.TempDir("", "sftptest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := path.Join(dir, "testCreateFile")
+	f, err := fs.Create(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := os.Lstat(sub); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpen(t *testing.T) {
+	sftp := testClientSvr(t)
+	defer sftp.Close()
+	fs := getTestFs(sftp)
+
+	dir, err := ioutil.TempDir("", "sftptest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := path.Join(dir, "testOpenFile")
+	cf, err := fs.Create(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cf.Close()
+	f, err := fs.Open(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := os.Lstat(sub); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestChmod(t *testing.T) {
-	go ensureTestServer(t)
-	fs, err := sshfs.New("localhost", testPort, "", "", "/tmp")
+	sftp := testClientSvr(t)
+	defer sftp.Close()
+	fs := getTestFs(sftp)
+
+	dir, err := ioutil.TempDir("", "sftptest")
 	if err != nil {
-		t.Fatal("Failed to open a new ssh filesystem", err)
+		t.Fatal(err)
+	}
+	sub := path.Join(dir, "testChmodFile")
+	cf, err := fs.Create(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cf.Close()
+
+	// Set mode to 0666
+	err = os.Chmod(sub, 0666)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	err = fs.Chmod("/testdir//foo", 0744)
+	// Now use the sshfs to set it to 0644
+	mod := os.FileMode(0644)
+	err = fs.Chmod(sub, mod)
 	if err != nil {
-		t.Error("Failed chmod", err)
+		t.Fatal(err)
 	}
-	cmd := <-sshCmdCaptor
-	expected := "chmod 744 /tmp/testdir/foo"
 
-	if cmd != expected {
-		t.Errorf("Mkdir command mismatched\nExpected:\t%s\nGot:\t%s", expected, cmd)
+	info, err := os.Lstat(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode() != mod {
+		t.Fatalf("Expected file mode: %o, found: %o", mod, info.Mode())
 	}
 }
 func TestChtimes(t *testing.T) {
-	go ensureTestServer(t)
-	fs, err := sshfs.New("localhost", testPort, "", "", "/tmp")
-	// fs, err := sshfs.New("10.1.3.244", 22, "ubuntu", "", "/tmp")
-	if err != nil {
-		t.Fatal("Failed to open a new ssh filesystem", err)
-	}
-	testTime, err := time.Parse(time.RFC3339, "2006-01-02T15:04:05Z")
-	if err != nil {
-		t.Error("Cannot parse test time ", err)
-	}
-	err = fs.Chtimes("/testdir1/foo", testTime, testTime)
-	if err != nil {
-		t.Error("Failed chtimes", err)
-	}
-	acmd := <-sshCmdCaptor
-	aexpected := "touch -a -t 200601021504.05 /tmp/testdir1/foo"
-	mcmd := <-sshCmdCaptor
-	mexpected := "touch -m -t 200601021504.05 /tmp/testdir1/foo"
+	sftp := testClientSvr(t)
+	defer sftp.Close()
+	fs := getTestFs(sftp)
 
-	if acmd != aexpected {
-		t.Errorf("Mkdir command mismatched\nExpected:\t%s\nGot:\t%s", aexpected, acmd)
+	testTime, err := time.Parse(time.RFC3339, "2006-01-02T15:04:05Z")
+
+	dir, err := ioutil.TempDir("", "sftptest")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if mcmd != mexpected {
-		t.Errorf("Mkdir command mismatched\nExpected:\t%s\nGot:\t%s", mexpected, mcmd)
+	sub := path.Join(dir, "testChtimesFile")
+	cf, err := fs.Create(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cf.Close()
+
+	//  change time
+	err = fs.Chtimes(sub, testTime, testTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Lstat(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ModTime().Unix() != testTime.Unix() {
+		t.Fatalf("Expected file mod time: %v, found: %v", testTime, info.ModTime())
 	}
 }

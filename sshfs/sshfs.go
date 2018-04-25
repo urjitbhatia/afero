@@ -6,9 +6,9 @@ import (
 	"net"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/pkg/sftp"
 	"github.com/spf13/afero"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -19,37 +19,31 @@ var touchTimeFmt = "200601021504.05"
 
 // Fs is an afero filesystem over ssh
 type Fs struct {
-	Host     string
-	Port     int
-	Root     string
-	conn     *ssh.Client
-	config   *ssh.Config
-	sessions *sync.Pool
-}
-
-type session struct {
-	err error
-	*ssh.Session
+	Host   string
+	Port   int
+	client *sftp.Client
 }
 
 // New provides an afero filesystem over ssh
-func New(host string, port int, username, password string, root string) (afero.Fs, error) {
+func New(host string, port int, username, password string) (afero.Fs, error) {
 	// Todo : handle reconnecting broken connections...
 	conn, err := connect(username, password, host, port)
 	if err != nil {
 		return nil, err
 	}
-	sessionPool := sync.Pool{
-		New: func() interface{} {
-			s, err := conn.NewSession()
-			return &session{err, s}
-		},
+	client, err := sftp.NewClient(conn)
+	if err != nil {
+		return nil, err
 	}
 	return &Fs{Host: host,
-		Port:     port,
-		Root:     root,
-		conn:     conn,
-		sessions: &sessionPool}, nil
+		Port:   port,
+		client: client}, nil
+}
+
+func NewWithClient(host string, port int, username, password string, client *sftp.Client) afero.Fs {
+	return &Fs{Host: host,
+		Port:   port,
+		client: client}
 }
 
 // String representation of this fs
@@ -58,60 +52,59 @@ func (fs *Fs) String() string {
 	if err != nil {
 		hostname = "localhost"
 	}
-	return fmt.Sprintf("SSH_FS@%s:%d::%s@@%s", fs.Host, fs.Port, fs.Root, hostname)
+	return fmt.Sprintf("SSH_FS@%s:%d::%s@@%s", fs.Host, fs.Port, hostname)
 }
 
 // Create a new file
-func (fs *Fs) Create(name string) (afero.File, error) { return nil, nil }
+func (fs *Fs) Create(name string) (afero.File, error) {
+	f, err := fs.client.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	return newSSHFile(f), nil
+}
 
 // Mkdir creates a new dir
 func (fs *Fs) Mkdir(name string, perm os.FileMode) error {
-	sess := fs.sessions.Get().(*session)
-	if sess.err != nil {
-		return sess.err
+	err := fs.client.Mkdir(name)
+	if err != nil {
+		return err
 	}
-	defer func() {
-		fs.sessions.Put(sess)
-	}()
-	// The reason to use `install` is to be able to create a dir
-	// and apply the right permissions atomically - if for some reason
-	// We could have called a mkdir followed by a chmod call but if we crash right
-	// after mkdir, we potentially leave an exposed directory on somebody's production
-	// server.
-
-	// TODO: check `install` is available on what platforms by default
-	cmd := fmt.Sprintf("install -d -m %o %s/%s", perm, fs.Root, name)
-	log.Println("Sending remote command: ", cmd, len(cmd))
-	r, err := sess.CombinedOutput(cmd)
-	if err == nil {
-		log.Println("Error performing mkdir: ", r, err)
-	}
-	return nil
+	return fs.client.Chmod(name, perm)
 }
 
 // MkdirAll creates all the directories
 func (fs *Fs) MkdirAll(path string, perm os.FileMode) error {
-	sess := fs.sessions.Get().(*session)
-	if sess.err != nil {
-		return sess.err
-	}
-	defer func() {
-		fs.sessions.Put(sess)
-	}()
-	parts := []string{}
-	for _, part := range strings.Split(path, "/") {
-		if part == "" {
-			// takes care of "//dir" or "/dir//dir1" etc
+	parts := ""
+	for _, p := range strings.Split(path, "/") {
+		if p == "" {
 			continue
 		}
-		parts = append(parts, part)
+		parts += "/" + p
+		dir, err := fs.client.Stat(parts)
+		if err == nil {
+			if !dir.IsDir() {
+				return fmt.Errorf("Found a non-directory file on path: %s", parts)
+			}
+			continue
+		}
+		err = fs.Mkdir(parts, perm)
+		if err != nil {
+			return err
+		}
 	}
-
-	return fs.Mkdir(strings.Join(parts, "/"), perm)
+	return nil
 }
 
 // Open opens the named file for reading.
-func (fs *Fs) Open(name string) (afero.File, error) { return nil, nil }
+func (fs *Fs) Open(name string) (afero.File, error) {
+	f, err := fs.client.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	af := newSSHFile(f)
+	return af, err
+}
 
 // OpenFile is the generalized open call; most users will use Open or Create instead.
 // It opens the named file with specified flag (O_RDONLY etc.)
@@ -123,84 +116,32 @@ func (fs *Fs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, err
 }
 
 // Remove removes the named file or directory. If there is an error, it will be of type *PathError.
-func (fs *Fs) Remove(name string) error { return nil }
+func (fs *Fs) Remove(name string) error { return fs.client.Remove(name) }
 
 // RemoveAll removes path and any children it contains.
 // It removes everything it can but returns the first error it encounters.
 // If the path does not exist, RemoveAll returns nil (no error).
-func (fs *Fs) RemoveAll(path string) error { return nil }
+func (fs *Fs) RemoveAll(path string) error { return fs.client.RemoveDirectory(path) }
 
 // Rename renames (moves) oldpath to newpath. If newpath already exists and is not a directory,
 // Rename replaces it. OS-specific restrictions may apply when
 // oldpath and newpath are in different directories.
 // If there is an error, it will be of type *LinkError.
-func (fs *Fs) Rename(oldname, newname string) error { return nil }
+func (fs *Fs) Rename(oldname, newname string) error { return fs.client.Rename(oldname, newname) }
 
 // Stat returns the FileInfo structure describing file. If there is an error, it will be of type *PathError.
-func (fs *Fs) Stat(name string) (os.FileInfo, error) { return nil, nil }
+func (fs *Fs) Stat(name string) (os.FileInfo, error) { return fs.client.Stat(name) }
 
 // Name returns the name of the filesystem
 func (fs *Fs) Name() string { return fs.String() }
 
 // Chmod changes the mode of the named file to mode.
-// If the file is a symbolic link, it changes the mode of the link's target.
-// If there is an error, it will be of type *PathError.
-// See docs in file.go?s=10557:10601#L326
-func (fs *Fs) Chmod(name string, mode os.FileMode) error {
-	sess := fs.sessions.Get().(*session)
-	if sess.err != nil {
-		return sess.err
-	}
-	defer func() {
-		fs.sessions.Put(sess)
-	}()
-	cmd := fmt.Sprintf("chmod %o %s", mode, sanitizePath(fs.Root, name))
-	r, err := sess.CombinedOutput(cmd)
-	if err == nil {
-		log.Println("Error performing chmod: ", r, err)
-	}
-	return nil
-}
+func (fs *Fs) Chmod(name string, mode os.FileMode) error { return fs.client.Chmod(name, mode) }
 
 // Chtimes changes the access and modification times of the named
 // file, similar to the Unix utime() or utimes() functions.
-//
-// The underlying filesystem may truncate or round the values to a
-// less precise time unit.
-// If there is an error, it will be of type *PathError.
 func (fs *Fs) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	// Atime
-	asess := fs.sessions.Get().(*session)
-	if asess.err != nil {
-		return asess.err
-	}
-	defer func() {
-		fs.sessions.Put(asess)
-	}()
-
-	cmd := fmt.Sprintf("touch -a -t %s %s", atime.Format(touchTimeFmt), sanitizePath(fs.Root, name))
-	log.Println("running command: ", cmd)
-	out, err := asess.CombinedOutput(cmd)
-	if err != nil {
-		log.Println("Error setting access time ", err, string(out))
-		return err
-	}
-	// MTime
-	msess := fs.sessions.Get().(*session)
-	if msess.err != nil {
-		return msess.err
-	}
-	defer func() {
-		fs.sessions.Put(msess)
-	}()
-
-	cmd = fmt.Sprintf("touch -m -t %s %s", atime.Format(touchTimeFmt), sanitizePath(fs.Root, name))
-	log.Println("Running mtime command ", cmd)
-	err = msess.Run(cmd)
-	if err != nil {
-		log.Println("Error setting mod time ", err)
-	}
-	return err
+	return fs.client.Chtimes(name, atime, mtime)
 }
 
 func connect(user, password, host string, port int) (*ssh.Client, error) {
