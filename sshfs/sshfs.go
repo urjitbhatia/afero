@@ -14,9 +14,6 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-// [[CC]YY]MMDDhhmm[.ss]
-var touchTimeFmt = "200601021504.05"
-
 // Fs is an afero filesystem over ssh
 type Fs struct {
 	Host   string
