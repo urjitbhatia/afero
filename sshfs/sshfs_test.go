@@ -12,14 +12,14 @@ import (
 	"github.com/spf13/afero/sshfs"
 )
 
-var testPort = 22000
+var testPort = 0
 
 func getTestFs(sftp *sftp.Client) afero.Fs {
 	return sshfs.NewWithClient("localhost", testPort, "", "", sftp)
 }
 
 func TestMkdir(t *testing.T) {
-	sftp := testClientSvr(t)
+	sftp := testClientGoSvr(t)
 	defer sftp.Close()
 	fs := getTestFs(sftp)
 
@@ -36,7 +36,7 @@ func TestMkdir(t *testing.T) {
 	}
 }
 func TestMkdirAll(t *testing.T) {
-	sftp := testClientSvr(t)
+	sftp := testClientGoSvr(t)
 	defer sftp.Close()
 	fs := getTestFs(sftp)
 
@@ -53,7 +53,7 @@ func TestMkdirAll(t *testing.T) {
 	}
 }
 func TestCreate(t *testing.T) {
-	sftp := testClientSvr(t)
+	sftp := testClientGoSvr(t)
 	defer sftp.Close()
 	fs := getTestFs(sftp)
 
@@ -73,7 +73,7 @@ func TestCreate(t *testing.T) {
 }
 
 func TestOpen(t *testing.T) {
-	sftp := testClientSvr(t)
+	sftp := testClientGoSvr(t)
 	defer sftp.Close()
 	fs := getTestFs(sftp)
 
@@ -98,7 +98,7 @@ func TestOpen(t *testing.T) {
 }
 
 func TestChmod(t *testing.T) {
-	sftp := testClientSvr(t)
+	sftp := testClientGoSvr(t)
 	defer sftp.Close()
 	fs := getTestFs(sftp)
 
@@ -135,7 +135,7 @@ func TestChmod(t *testing.T) {
 	}
 }
 func TestChtimes(t *testing.T) {
-	sftp := testClientSvr(t)
+	sftp := testClientGoSvr(t)
 	defer sftp.Close()
 	fs := getTestFs(sftp)
 

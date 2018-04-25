@@ -49,7 +49,7 @@ func (fs *Fs) String() string {
 	if err != nil {
 		hostname = "localhost"
 	}
-	return fmt.Sprintf("SSH_FS@%s:%d::%s@@%s", fs.Host, fs.Port, hostname)
+	return fmt.Sprintf("SSH_FS@%s:%d::%s", fs.Host, fs.Port, hostname)
 }
 
 // Create a new file
@@ -63,8 +63,7 @@ func (fs *Fs) Create(name string) (afero.File, error) {
 
 // Mkdir creates a new dir
 func (fs *Fs) Mkdir(name string, perm os.FileMode) error {
-	err := fs.client.Mkdir(name)
-	if err != nil {
+	if err := fs.client.Mkdir(name); err != nil {
 		return err
 	}
 	return fs.client.Chmod(name, perm)
@@ -72,25 +71,10 @@ func (fs *Fs) Mkdir(name string, perm os.FileMode) error {
 
 // MkdirAll creates all the directories
 func (fs *Fs) MkdirAll(path string, perm os.FileMode) error {
-	parts := ""
-	for _, p := range strings.Split(path, "/") {
-		if p == "" {
-			continue
-		}
-		parts += "/" + p
-		dir, err := fs.client.Stat(parts)
-		if err == nil {
-			if !dir.IsDir() {
-				return fmt.Errorf("Found a non-directory file on path: %s", parts)
-			}
-			continue
-		}
-		err = fs.Mkdir(parts, perm)
-		if err != nil {
-			return err
-		}
+	if err := fs.client.MkdirAll(path); err != nil {
+		return err
 	}
-	return nil
+	return fs.client.Chmod(path, perm)
 }
 
 // Open opens the named file for reading.
@@ -113,27 +97,39 @@ func (fs *Fs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, err
 }
 
 // Remove removes the named file or directory. If there is an error, it will be of type *PathError.
-func (fs *Fs) Remove(name string) error { return fs.client.Remove(name) }
+func (fs *Fs) Remove(name string) error {
+	return fs.client.Remove(name)
+}
 
 // RemoveAll removes path and any children it contains.
 // It removes everything it can but returns the first error it encounters.
 // If the path does not exist, RemoveAll returns nil (no error).
-func (fs *Fs) RemoveAll(path string) error { return fs.client.RemoveDirectory(path) }
+func (fs *Fs) RemoveAll(path string) error {
+	return fs.client.RemoveDirectory(path)
+}
 
 // Rename renames (moves) oldpath to newpath. If newpath already exists and is not a directory,
 // Rename replaces it. OS-specific restrictions may apply when
 // oldpath and newpath are in different directories.
 // If there is an error, it will be of type *LinkError.
-func (fs *Fs) Rename(oldname, newname string) error { return fs.client.Rename(oldname, newname) }
+func (fs *Fs) Rename(oldname, newname string) error {
+	return fs.client.Rename(oldname, newname)
+}
 
 // Stat returns the FileInfo structure describing file. If there is an error, it will be of type *PathError.
-func (fs *Fs) Stat(name string) (os.FileInfo, error) { return fs.client.Stat(name) }
+func (fs *Fs) Stat(name string) (os.FileInfo, error) {
+	return fs.client.Stat(name)
+}
 
 // Name returns the name of the filesystem
-func (fs *Fs) Name() string { return fs.String() }
+func (fs *Fs) Name() string {
+	return fs.String()
+}
 
 // Chmod changes the mode of the named file to mode.
-func (fs *Fs) Chmod(name string, mode os.FileMode) error { return fs.client.Chmod(name, mode) }
+func (fs *Fs) Chmod(name string, mode os.FileMode) error {
+	return fs.client.Chmod(name, mode)
+}
 
 // Chtimes changes the access and modification times of the named
 // file, similar to the Unix utime() or utimes() functions.
@@ -154,7 +150,7 @@ func connect(user, password, host string, port int) (*ssh.Client, error) {
 		Auth: []ssh.AuthMethod{
 			sshAgent(),
 		},
-		Timeout:         100 * time.Millisecond,
+		Timeout:         300 * time.Millisecond,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 

@@ -10,6 +10,8 @@ import (
 	"github.com/pkg/sftp"
 )
 
+// From: https://github.com/pkg/sftp/blob/master/client_integration_test.go
+
 const (
 	READONLY                = true
 	READWRITE               = false
@@ -23,10 +25,10 @@ type delayedWrite struct {
 	b []byte
 }
 
-func testClientSvr(t testing.TB) *sftp.Client {
+func testClientGoSvr(t testing.TB) *sftp.Client {
 	c1, c2 := netPipe(t)
 
-	options := []sftp.ServerOption{sftp.WithDebug(os.Stderr)}
+	options := []sftp.ServerOption{sftp.WithDebug(os.Stdout)}
 
 	server, err := sftp.NewServer(c1, options...)
 	if err != nil {
@@ -53,6 +55,7 @@ func netPipe(t testing.TB) (io.ReadWriteCloser, io.ReadWriteCloser) {
 		error
 	}
 
+	// Listen for our test ssh server
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -60,21 +63,29 @@ func netPipe(t testing.TB) (io.ReadWriteCloser, io.ReadWriteCloser) {
 
 	ch := make(chan result, 1)
 	go func() {
+		// Accept incoming connections
 		conn, err := l.Accept()
 		ch <- result{conn, err}
+		// Stop listening
 		err = l.Close()
 		if err != nil {
 			t.Error(err)
 		}
 	}()
+
+	// Connect to our listener
 	c1, err := net.Dial("tcp", l.Addr().String())
 	if err != nil {
 		l.Close() // might cause another in the listening goroutine, but too bad
 		t.Fatal(err)
 	}
+
+	// We have a connection we can use
 	r := <-ch
 	if r.error != nil {
 		t.Fatal(err)
 	}
+
+	// Return client and server connection pair
 	return c1, r.Conn
 }
