@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -162,7 +161,7 @@ func connect(user, password, host string, port int) (*ssh.Client, error) {
 	if sshClient, err = ssh.Dial("tcp", addr, clientConfig); err != nil {
 		return nil, err
 	}
-	log.Println("Got an ssh client", sshClient.RemoteAddr().String())
+	log.Println("sshfs: Connected over ssh to", sshClient.RemoteAddr().String())
 	return sshClient, nil
 }
 
@@ -174,17 +173,4 @@ func sshAgent() ssh.AuthMethod {
 	}
 	log.Println("Failed to instantiate ssh from SSH_AUTH_SOCK", err)
 	return nil
-}
-
-func sanitizePath(root, path string) string {
-	parts := append([]string{}, root)
-	for _, part := range strings.Split(path, "/") {
-		if part == "" {
-			// takes care of "//dir" or "/dir//dir1" etc
-			continue
-		}
-		parts = append(parts, part)
-	}
-
-	return strings.Join(parts, "/")
 }
