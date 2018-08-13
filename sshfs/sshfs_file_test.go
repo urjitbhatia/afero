@@ -80,6 +80,7 @@ func TestReadOps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	bufs := string(buf)
 	if bufs != "World" {
 		t.Fatalf("Expected file to contain: 'World' Found: %s", bufs)
@@ -88,5 +89,20 @@ func TestReadOps(t *testing.T) {
 	// Read name
 	if rwf.Name() != sub {
 		t.Fatalf("Expected file name to be: '%s' Found: %s", sub, rwf.Name())
+	}
+
+	// Some Stat file checks
+	info, err := rwf.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name() != "testReadWriteFile" {
+		t.Fatalf("Expected file name to be: '%s' Stat Found: %s", "testReadWriteFile", info.Name())
+	}
+	if info.IsDir() {
+		t.Fatalf("Expected %s to be a file but stat said dir ", info.Name())
+	}
+	if info.Size() != 11 {
+		t.Fatalf("Expected file %s to have size 11", sub)
 	}
 }
