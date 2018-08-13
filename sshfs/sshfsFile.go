@@ -1,6 +1,7 @@
 package sshfs
 
 import (
+	"io"
 	"os"
 
 	"github.com/pkg/sftp"
@@ -17,7 +18,12 @@ func newSSHFile(f *sftp.File) afero.File {
 }
 
 func (f *file) ReadAt(b []byte, n int64) (int, error) {
-	return 0, nil
+	n, err := f.Seek(n, io.SeekStart)
+	if err != nil {
+		return int(n), err
+	}
+
+	return f.Read(b)
 }
 
 func (f *file) WriteAt(b []byte, n int64) (int, error) {
@@ -37,5 +43,5 @@ func (f *file) Sync() error {
 }
 
 func (f *file) WriteString(s string) (int, error) {
-	return 0, nil
+	return f.File.Write([]byte(s))
 }

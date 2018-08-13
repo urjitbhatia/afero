@@ -7,21 +7,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/sftp"
 	"github.com/spf13/afero"
 	"github.com/spf13/afero/sshfs"
 )
 
 var testPort = 0
+var testFs afero.Fs
 
-func getTestFs(sftp *sftp.Client) afero.Fs {
-	return sshfs.NewWithClient("localhost", testPort, "", "", sftp)
+func getTestFs(t *testing.T) afero.Fs {
+	if testFs == nil {
+		sftp := testClientGoSvr(t)
+		// memoize our test fs
+		testFs = sshfs.NewWithClient("localhost", testPort, "", "", sftp)
+	}
+	return testFs
 }
 
 func TestMkdir(t *testing.T) {
-	sftp := testClientGoSvr(t)
-	defer sftp.Close()
-	fs := getTestFs(sftp)
+	fs := getTestFs(t)
 
 	dir, err := ioutil.TempDir("", "sftptest")
 	if err != nil {
@@ -36,9 +39,7 @@ func TestMkdir(t *testing.T) {
 	}
 }
 func TestMkdirAll(t *testing.T) {
-	sftp := testClientGoSvr(t)
-	defer sftp.Close()
-	fs := getTestFs(sftp)
+	fs := getTestFs(t)
 
 	dir, err := ioutil.TempDir("", "sftptest")
 	if err != nil {
@@ -53,9 +54,7 @@ func TestMkdirAll(t *testing.T) {
 	}
 }
 func TestCreate(t *testing.T) {
-	sftp := testClientGoSvr(t)
-	defer sftp.Close()
-	fs := getTestFs(sftp)
+	fs := getTestFs(t)
 
 	dir, err := ioutil.TempDir("", "sftptest")
 	if err != nil {
@@ -73,9 +72,7 @@ func TestCreate(t *testing.T) {
 }
 
 func TestOpen(t *testing.T) {
-	sftp := testClientGoSvr(t)
-	defer sftp.Close()
-	fs := getTestFs(sftp)
+	fs := getTestFs(t)
 
 	dir, err := ioutil.TempDir("", "sftptest")
 	if err != nil {
@@ -98,9 +95,7 @@ func TestOpen(t *testing.T) {
 }
 
 func TestChmod(t *testing.T) {
-	sftp := testClientGoSvr(t)
-	defer sftp.Close()
-	fs := getTestFs(sftp)
+	fs := getTestFs(t)
 
 	dir, err := ioutil.TempDir("", "sftptest")
 	if err != nil {
@@ -135,9 +130,7 @@ func TestChmod(t *testing.T) {
 	}
 }
 func TestChtimes(t *testing.T) {
-	sftp := testClientGoSvr(t)
-	defer sftp.Close()
-	fs := getTestFs(sftp)
+	fs := getTestFs(t)
 
 	testTime, err := time.Parse(time.RFC3339, "2006-01-02T15:04:05Z")
 
