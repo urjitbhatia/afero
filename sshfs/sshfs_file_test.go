@@ -84,4 +84,9 @@ func TestReadOps(t *testing.T) {
 	if bufs != "World" {
 		t.Fatalf("Expected file to contain: 'World' Found: %s", bufs)
 	}
+
+	// Read name
+	if rwf.Name() != sub {
+		t.Fatalf("Expected file name to be: '%s' Found: %s", sub, rwf.Name())
+	}
 }
