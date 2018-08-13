@@ -37,6 +37,8 @@ func New(host string, port int, username, password string) (afero.Fs, error) {
 		client: client}, nil
 }
 
+// NewWithClient creates a new SSH file system given an sftp client that can connect to the given
+// remote system
 func NewWithClient(host string, port int, username, password string, client *sftp.Client) afero.Fs {
 	return &Fs{Host: host,
 		Port:   port,
