@@ -27,7 +27,11 @@ func (f *file) ReadAt(b []byte, n int64) (int, error) {
 }
 
 func (f *file) WriteAt(b []byte, n int64) (int, error) {
-	return 0, nil
+	n, err := f.Seek(n, io.SeekStart)
+	if err != nil {
+		return int(n), err
+	}
+	return f.Write(b)
 }
 
 func (f *file) Readdir(count int) ([]os.FileInfo, error) {
