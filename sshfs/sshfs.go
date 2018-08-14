@@ -59,7 +59,7 @@ func (fs *Fs) Create(name string) (afero.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newSSHFile(f), nil
+	return newSSHFile(f, fs.client), nil
 }
 
 // Mkdir creates a new dir
@@ -84,8 +84,8 @@ func (fs *Fs) Open(name string) (afero.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	af := newSSHFile(f)
-	return af, err
+	af := newSSHFile(f, fs.client)
+	return af, nil
 }
 
 // OpenFile is the generalized open call; most users will use Open or Create instead.
@@ -94,7 +94,12 @@ func (fs *Fs) Open(name string) (afero.File, error) {
 // If successful, methods on the returned File can be used for I/O.
 // If there is an error, it will be of type *PathError.
 func (fs *Fs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
-	return nil, nil
+	f, err := fs.client.OpenFile(name, flag)
+	if err != nil {
+		return nil, err
+	}
+	af := newSSHFile(f, fs.client)
+	return af, nil
 }
 
 // Remove removes the named file or directory. If there is an error, it will be of type *PathError.

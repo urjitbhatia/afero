@@ -91,4 +91,18 @@ func TestReadWrite(t *testing.T) {
 	if info.Size() != 0 {
 		t.Fatalf("Expected truncated file %s to have size 0", sub)
 	}
+
+	// file.ReadDir - should err for non-dir file
+	_, err = rwf.Readdir(2)
+	e, _ := err.(*os.PathError)
+	if e.Err.Error() != "Non dir file" {
+		t.Fatal("Expected os.Path performing Readdir on non-dir file", err)
+	}
+
+	// file.Readdirnames - should err for non-dir file
+	_, err = rwf.Readdirnames(2)
+	e, _ = err.(*os.PathError)
+	if e.Err.Error() != "Non dir file" {
+		t.Fatal("Expected os.Path performing Readdir on non-dir file", err)
+	}
 }

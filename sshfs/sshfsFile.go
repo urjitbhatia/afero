@@ -1,6 +1,7 @@
 package sshfs
 
 import (
+	"errors"
 	"io"
 	"os"
 
@@ -11,10 +12,11 @@ import (
 
 type file struct {
 	*sftp.File
+	c *sftp.Client
 }
 
-func newSSHFile(f *sftp.File) afero.File {
-	return &file{f}
+func newSSHFile(f *sftp.File, c *sftp.Client) afero.File {
+	return &file{f, c}
 }
 
 func (f *file) ReadAt(b []byte, n int64) (int, error) {
@@ -35,11 +37,35 @@ func (f *file) WriteAt(b []byte, n int64) (int, error) {
 }
 
 func (f *file) Readdir(count int) ([]os.FileInfo, error) {
-	return []os.FileInfo{}, nil
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, &os.PathError{Err: errors.New("Non dir file"), Op: "readdir", Path: f.Name()}
+	}
+	return f.c.ReadDir(f.Name())
 }
 
 func (f *file) Readdirnames(n int) ([]string, error) {
-	return []string{}, nil
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, &os.PathError{Err: errors.New("Non dir file"), Op: "readdir", Path: f.Name()}
+	}
+	infos, err := f.c.ReadDir(f.Name())
+	if err != nil {
+		return nil, err
+	}
+	// TODO - paginate on n
+	names := make([]string, len(infos))
+	for i, n := range infos {
+		names[i] = n.Name()
+	}
+
+	return names, nil
 }
 
 func (f *file) Sync() error {
